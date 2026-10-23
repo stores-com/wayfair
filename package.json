@@ -33,5 +33,5 @@
         "test:coverage": "node --test --test-force-exit --experimental-test-coverage --test-reporter=spec test/*.js",
         "test:only": "node --test --test-force-exit --test-only --test-reporter=spec test/*.js"
     },
-    "version": "0.1.0"
+    "version": "0.1.1"
 }

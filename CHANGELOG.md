@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Publish from the Publish workflow with npm trusted publishing. No code changes.
+
 ## 0.1.0
 
 - Add Wayfair OAuth access tokens (`client_credentials`), cached in memory with memory-cache for 12 hours and dropped after a 401.
