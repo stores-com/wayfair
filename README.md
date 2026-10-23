@@ -4,7 +4,7 @@
 [![npm version](https://img.shields.io/npm/v/@stores.com/wayfair)](https://www.npmjs.com/package/@stores.com/wayfair)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A Node.js client for Wayfair's supplier APIs: dropship inventory feeds, dropship purchase orders, accepting purchase orders, and ship notices.
+A Node.js client for Wayfair's supplier APIs: dropship inventory feeds and dropship purchase orders.
 
 ## Installation
 
@@ -79,41 +79,6 @@ See: https://developer.wayfair.io/posts/dropship-inventory
 const status = await wayfair.inventory.save([
     { quantityOnHand: 7, supplierId: 199492, supplierPartNumber: '272687' }
 ], { feedKind: 'TRUE_UP' });
-```
-
-### purchaseOrders.accept(variables, options)
-
-Accept a dropship purchase order's line items. Backorders can't be sent through the API; they're done on Partner Home's Dropship Orders page.
-
-See: https://developer.wayfair.io/posts/dropship-orders-asn
-
-```javascript
-const status = await wayfair.purchaseOrders.accept({
-    lineItems: [{ estimatedShipDate: '2026-10-24 00:00:00.000000 +00:00', partNumber: '272687', quantity: 1, unitPrice: 10.99 }],
-    poNumber: 'CS000000001',
-    shipSpeed: 'GROUND'
-});
-```
-
-### purchaseOrders.shipment(notice, options)
-
-Send a ship notice (ASN) for a dropship purchase order, as soon as it leaves the warehouse.
-
-See: https://developer.wayfair.io/posts/dropship-orders-asn
-
-```javascript
-const status = await wayfair.purchaseOrders.shipment({
-    carrierCode: 'FDEG',
-    destinationAddress: { city: 'Springfield', country: 'US', name: 'Jane Customer', postalCode: '62701', state: 'IL', streetAddress1: '100 Main Street' },
-    packageCount: 1,
-    poNumber: 'CS000000001',
-    shipDate: '2026-10-23 15:00:00.000000 +00:00',
-    shipSpeed: 'GROUND',
-    smallParcelShipments: [{ items: [{ partNumber: '272687', quantity: 1 }], package: { code: { type: 'TRACKING_NUMBER', value: '999999999999' }, weight: 4 } }],
-    sourceAddress: { city: 'Carrollton', country: 'US', name: 'Stores.com TX 75010', postalCode: '75010', state: 'TX', streetAddress1: '1950 Parker Road' },
-    supplierId: 199492,
-    trackingNumber: '999999999999'
-});
 ```
 
 Every method takes `options.timeout` to override the client's timeout (30 seconds by default).

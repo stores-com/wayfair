@@ -4,7 +4,7 @@ const cache = require('memory-cache');
 
 const HttpError = require('@stores.com/http-error');
 
-// Fields Wayfair returns for an inventory feed, an acceptance, or a ship notice
+// Fields Wayfair returns for an inventory feed
 const transactionStatusFields = `
     completedAt
     errorCount
@@ -327,57 +327,6 @@ function Wayfair(args) {
             }`;
 
             return (await request(mutation, { dryRun: options.dryRun, feedKind: options.feedKind, inventory }, options)).inventory.save;
-        }
-    };
-
-    this.purchaseOrders = {
-        /**
-         * Accept a dropship purchase order's line items. Backorders can't be sent through the API; they're done on Partner Home's Dropship Orders page.
-         *
-         * @param {Object} variables - Mutation arguments.
-         * @param {Array.<Object>} variables.lineItems - Line items: { estimatedShipDate, partNumber, quantity, unitPrice }. partNumber and unitPrice must match the purchase order.
-         * @param {string} variables.poNumber - The purchase order number.
-         * @param {string} variables.shipSpeed - The purchase order's ship speed, e.g. 'GROUND'.
-         * @param {Object} [options] - Per-call options.
-         * @param {number} [options.timeout] - Override the client timeout in milliseconds.
-         * @returns {Promise<Object>} The transaction status.
-         * @throws {HttpError} If Wayfair responds with an error.
-         * @see https://developer.wayfair.io/posts/dropship-orders-asn
-         * @example
-         * const status = await wayfair.purchaseOrders.accept({ lineItems: [{ estimatedShipDate: '2026-10-24 00:00:00.000000 +00:00', partNumber: '272687', quantity: 1, unitPrice: 10.99 }], poNumber: 'CS000000001', shipSpeed: 'GROUND' });
-         */
-        accept: async (variables, options = {}) => {
-            const mutation = `mutation accept($lineItems: [AcceptedLineItemInput!]!, $poNumber: String!, $shipSpeed: ShipSpeed!) {
-                purchaseOrders {
-                    accept(poNumber: $poNumber, shipSpeed: $shipSpeed, lineItems: $lineItems) {${transactionStatusFields}
-                    }
-                }
-            }`;
-
-            return (await request(mutation, variables, options)).purchaseOrders.accept;
-        },
-
-        /**
-         * Send a ship notice (ASN) for a dropship purchase order, as soon as it leaves the warehouse.
-         *
-         * @param {Object} notice - The ShipNoticeInput: carrierCode, destinationAddress, packageCount, poNumber, shipDate, shipSpeed, sourceAddress, supplierId, trackingNumber, and smallParcelShipments or largeParcelShipments.
-         * @param {Object} [options] - Per-call options.
-         * @param {number} [options.timeout] - Override the client timeout in milliseconds.
-         * @returns {Promise<Object>} The transaction status.
-         * @throws {HttpError} If Wayfair responds with an error.
-         * @see https://developer.wayfair.io/posts/dropship-orders-asn
-         * @example
-         * const status = await wayfair.purchaseOrders.shipment({ carrierCode: 'FDEG', poNumber: 'CS000000001', ... });
-         */
-        shipment: async (notice, options = {}) => {
-            const mutation = `mutation shipment($notice: ShipNoticeInput!) {
-                purchaseOrders {
-                    shipment(notice: $notice) {${transactionStatusFields}
-                    }
-                }
-            }`;
-
-            return (await request(mutation, { notice }, options)).purchaseOrders.shipment;
         }
     };
 }

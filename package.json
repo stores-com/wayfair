@@ -3,7 +3,7 @@
         "@stores.com/http-error": "~1.2.0",
         "memory-cache": "~0.2.0"
     },
-    "description": "A Node.js client for Wayfair's supplier APIs: dropship inventory, purchase orders, acceptance, and ship notices.",
+    "description": "A Node.js client for Wayfair's supplier APIs: dropship inventory feeds and dropship purchase orders.",
     "devDependencies": {
         "@eslint/js": "*",
         "eslint": "*",

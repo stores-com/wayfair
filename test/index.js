@@ -173,21 +173,3 @@ test('getDropshipPurchaseOrders with autoPagination stops when a page brings no 
     assert.equal(result.length, 25);
     assert.equal(calls.graphql.length, 2);
 });
-
-test('purchaseOrders.accept accepts the line items and returns the transaction status', async (t) => {
-    const calls = mockWayfair(t, () => Response.json({ data: { purchaseOrders: { accept: { handle: 'handle-2', status: 'NEW' } } } }));
-    const variables = { lineItems: [{ estimatedShipDate: '2026-10-24 00:00:00.000000 +00:00', partNumber: '272687', quantity: 1, unitPrice: 10.99 }], poNumber: 'CS000000001', shipSpeed: 'GROUND' };
-
-    assert.deepEqual(await createClient().purchaseOrders.accept(variables), { handle: 'handle-2', status: 'NEW' });
-    assert.match(calls.graphql[0].body.query, /purchaseOrders\s*{\s*accept\(poNumber: \$poNumber, shipSpeed: \$shipSpeed, lineItems: \$lineItems\)/);
-    assert.deepEqual(calls.graphql[0].body.variables, variables);
-});
-
-test('purchaseOrders.shipment sends the ship notice and returns the transaction status', async (t) => {
-    const calls = mockWayfair(t, () => Response.json({ data: { purchaseOrders: { shipment: { handle: 'handle-3', status: 'NEW' } } } }));
-    const notice = { carrierCode: 'FDEG', packageCount: 1, poNumber: 'CS000000001', shipDate: '2026-10-23 15:00:00.000000 +00:00', shipSpeed: 'GROUND', supplierId: 199492, trackingNumber: '999999999999' };
-
-    assert.deepEqual(await createClient().purchaseOrders.shipment(notice), { handle: 'handle-3', status: 'NEW' });
-    assert.match(calls.graphql[0].body.query, /purchaseOrders\s*{\s*shipment\(notice: \$notice\)/);
-    assert.deepEqual(calls.graphql[0].body.variables, { notice });
-});
