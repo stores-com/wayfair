@@ -1,0 +1,37 @@
+{
+    "dependencies": {
+        "@stores.com/http-error": "~1.2.0"
+    },
+    "description": "A Node.js client for Wayfair's supplier APIs: dropship inventory, purchase orders, acceptance, and ship notices.",
+    "devDependencies": {
+        "@eslint/js": "*",
+        "eslint": "*",
+        "globals": "*"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "keywords": [
+        "dropship",
+        "inventory",
+        "purchase-orders",
+        "supplier",
+        "wayfair"
+    ],
+    "license": "MIT",
+    "main": "index.js",
+    "name": "@stores.com/wayfair",
+    "publishConfig": {
+        "access": "public"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/stores-com/wayfair.git"
+    },
+    "scripts": {
+        "test": "node --test --test-reporter=spec test/*.js",
+        "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec test/*.js",
+        "test:only": "node --test --test-only --test-reporter=spec test/*.js"
+    },
+    "version": "0.1.0"
+}
