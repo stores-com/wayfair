@@ -1,6 +1,7 @@
 {
     "dependencies": {
-        "@stores.com/http-error": "~1.2.0"
+        "@stores.com/http-error": "~1.2.0",
+        "memory-cache": "~0.2.0"
     },
     "description": "A Node.js client for Wayfair's supplier APIs: dropship inventory, purchase orders, acceptance, and ship notices.",
     "devDependencies": {
@@ -29,9 +30,9 @@
         "url": "git+https://github.com/stores-com/wayfair.git"
     },
     "scripts": {
-        "test": "node --test --test-reporter=spec test/*.js",
-        "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec test/*.js",
-        "test:only": "node --test --test-only --test-reporter=spec test/*.js"
+        "test": "node --test --test-force-exit --test-reporter=spec test/*.js",
+        "test:coverage": "node --test --test-force-exit --experimental-test-coverage --test-reporter=spec test/*.js",
+        "test:only": "node --test --test-force-exit --test-only --test-reporter=spec test/*.js"
     },
     "version": "0.1.0"
 }

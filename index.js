@@ -1,9 +1,8 @@
 const timers = require('node:timers/promises');
 
-const HttpError = require('@stores.com/http-error');
+const cache = require('memory-cache');
 
-// Access tokens by client ID and API URL, shared by every client in the process
-const accessTokens = new Map();
+const HttpError = require('@stores.com/http-error');
 
 // Fields Wayfair returns for an inventory feed, an acceptance, or a ship notice
 const transactionStatusFields = `
@@ -38,7 +37,7 @@ function Wayfair(args) {
     };
 
     const baseUrl = _options.url.replace(/\/+$/, '');
-    const accessTokenKey = `${_options.client_id}:${baseUrl}`;
+    const accessTokenKey = `wayfair:${_options.client_id}:${baseUrl}`;
 
     /**
      * Send a GraphQL query or mutation to Wayfair's API with an access token.
@@ -67,7 +66,7 @@ function Wayfair(args) {
         if (!response.ok) {
             // The token was revoked or expired early, so the next request gets a new one
             if (response.status === 401) {
-                accessTokens.delete(accessTokenKey);
+                cache.del(accessTokenKey);
             }
 
             throw await HttpError.from(response);
@@ -83,7 +82,7 @@ function Wayfair(args) {
     };
 
     /**
-     * Get an OAuth access token using the client_credentials grant. Tokens last 24 hours; each is cached in memory for 12, as Wayfair recommends, so repeat calls return the same token until then.
+     * Get an OAuth access token using the client_credentials grant. Tokens last 24 hours; each is cached in memory (memory-cache) for 12, as Wayfair recommends, so repeat calls return the same token until then.
      *
      * @param {Object} [options] - Per-call options.
      * @param {number} [options.timeout] - Override the client timeout in milliseconds.
@@ -94,10 +93,10 @@ function Wayfair(args) {
      * const accessToken = await wayfair.getAccessToken();
      */
     this.getAccessToken = async (options = {}) => {
-        const cached = accessTokens.get(accessTokenKey);
+        const accessToken = cache.get(accessTokenKey);
 
-        if (cached?.expiresAt > Date.now()) {
-            return cached.accessToken;
+        if (accessToken) {
+            return accessToken;
         }
 
         const response = await fetch('https://sso.auth.wayfair.com/oauth/token', {
@@ -118,11 +117,11 @@ function Wayfair(args) {
             throw await HttpError.from(response);
         }
 
-        const accessToken = await response.json();
+        const json = await response.json();
 
-        accessTokens.set(accessTokenKey, { accessToken, expiresAt: Date.now() + Number(accessToken.expires_in) * 1000 / 2 });
+        cache.put(accessTokenKey, json, Number(json.expires_in) * 1000 / 2);
 
-        return accessToken;
+        return json;
     };
 
     /**

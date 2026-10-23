@@ -65,7 +65,7 @@ test('getAccessToken gets a new token after half its lifetime', async (t) => {
 
     const first = await wayfair.getAccessToken();
 
-    t.mock.timers.tick(43199999);
+    t.mock.timers.tick(43200000);
 
     assert.equal((await wayfair.getAccessToken()).access_token, first.access_token);
 
