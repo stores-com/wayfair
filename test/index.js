@@ -10,6 +10,9 @@ const Wayfair = require('../index');
 // Tests run against Wayfair's sandbox, never production
 const url = 'https://sandbox.api.wayfair.com';
 
+// Wayfair's sandbox only counts an inventory feed toward production access when it has at least 20 rows
+const partNumbers = ['227217', '227218', '227219', '227221', '227223', '227224', '227226', '227227', '227228', '227229', '227230', '227232', '227234', '227235', '227240', '227242', '227244', '267204', '272686', '272687'];
+
 test('getAccessToken', { concurrency: true }, async (t) => {
     t.test('should return an access token and cache it', async () => {
         const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
@@ -31,7 +34,7 @@ test('inventory.save', { concurrency: true }, async (t) => {
     t.test('should save a TRUE_UP feed and return the transaction status', async () => {
         const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
 
-        const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: '272687' }], { feedKind: 'TRUE_UP' });
+        const status = await wayfair.inventory.save(partNumbers.map(partNumber => ({ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: partNumber })), { feedKind: 'TRUE_UP' });
 
         assert.strictEqual(typeof status.handle, 'string');
         assert.ok(Array.isArray(status.errors));
