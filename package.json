@@ -3,7 +3,7 @@
         "@stores.com/http-error": "~1.2.0",
         "memory-cache": "~0.2.0"
     },
-    "description": "A Node.js client for Wayfair's dropship inventory API.",
+    "description": "A Node.js client for the Wayfair API.",
     "devDependencies": {
         "@eslint/js": "*",
         "eslint": "*",
@@ -33,5 +33,5 @@
         "test:coverage": "node --test --test-force-exit --experimental-test-coverage --test-reporter=spec test/*.js",
         "test:only": "node --test --test-force-exit --test-only --test-reporter=spec test/*.js"
     },
-    "version": "0.1.1"
+    "version": "0.1.2"
 }

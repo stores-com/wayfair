@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/@stores.com/wayfair)](https://www.npmjs.com/package/@stores.com/wayfair)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A Node.js client for Wayfair's dropship inventory API.
+A Node.js client for the Wayfair API.
 
 ## Installation
 

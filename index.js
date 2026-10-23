@@ -3,7 +3,7 @@ const cache = require('memory-cache');
 const HttpError = require('@stores.com/http-error');
 
 /**
- * A client for Wayfair's dropship inventory API. Method names follow Wayfair's GraphQL schema.
+ * A client for the Wayfair API. Method names follow Wayfair's GraphQL schema.
  *
  * @param {Object} args - Client options.
  * @param {string} args.client_id - Client ID of an application from Wayfair's Developer Portal (Application Management).

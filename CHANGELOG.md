@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Describe the package as a client for the Wayfair API, which it will grow to cover, not only its dropship inventory API.
+
 ## 0.1.1
 
 - Publish from the Publish workflow with npm trusted publishing. No code changes.
