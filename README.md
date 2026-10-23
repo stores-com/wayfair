@@ -1,6 +1,7 @@
 # wayfair
 
 [![Test](https://github.com/stores-com/wayfair/actions/workflows/test.yml/badge.svg)](https://github.com/stores-com/wayfair/actions/workflows/test.yml)
+[![Coverage Status](https://coveralls.io/repos/github/stores-com/wayfair/badge.svg?branch=main)](https://coveralls.io/github/stores-com/wayfair?branch=main)
 [![npm version](https://img.shields.io/npm/v/@stores.com/wayfair)](https://www.npmjs.com/package/@stores.com/wayfair)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -68,3 +69,11 @@ const status = await wayfair.inventory.save([
 ```
 
 Every method takes `options.timeout` to override the client's timeout (30 seconds by default).
+
+## Tests
+
+The tests run against Wayfair's sandbox (`https://sandbox.api.wayfair.com`), never production. They need a sandbox application's `WAYFAIR_CLIENT_ID` and `WAYFAIR_CLIENT_SECRET`, and the sandbox `WAYFAIR_SUPPLIER_ID`.
+
+```
+$ WAYFAIR_CLIENT_ID=... WAYFAIR_CLIENT_SECRET=... WAYFAIR_SUPPLIER_ID=... npm test
+```

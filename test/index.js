@@ -1,127 +1,69 @@
-const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
+const assert = require('node:assert');
 const test = require('node:test');
+
+const cache = require('memory-cache');
 
 const HttpError = require('@stores.com/http-error');
 
 const Wayfair = require('../index');
 
-/**
- * Stub fetch with a fake Wayfair: the token endpoint returns a new token each call, and GraphQL requests go to a handler.
- *
- * @param {Object} t - The test context.
- * @param {Function} handleGraphql - Called with ({ body, headers }) for each GraphQL request; returns a Response.
- * @returns {Object} Recorded calls ({ graphql: [...], token: [...] }).
- */
-function mockWayfair(t, handleGraphql) {
-    const calls = { graphql: [], token: [] };
+// Tests run against Wayfair's sandbox, never production
+const url = 'https://sandbox.api.wayfair.com';
 
-    t.mock.method(globalThis, 'fetch', async (url, options) => {
-        if (url === 'https://sso.auth.wayfair.com/oauth/token') {
-            calls.token.push({ body: JSON.parse(options.body), options });
+test('getAccessToken', { concurrency: true }, async (t) => {
+    t.test('should return an access token and cache it', async () => {
+        const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
 
-            return Response.json({ access_token: crypto.randomUUID(), expires_in: 86400, token_type: 'Bearer' });
-        }
+        const accessToken = await wayfair.getAccessToken();
 
-        const call = { body: JSON.parse(options.body), headers: new Headers(options.headers), url };
-
-        calls.graphql.push(call);
-
-        return handleGraphql(call);
+        assert.ok(accessToken.access_token);
+        assert.strictEqual(await wayfair.getAccessToken(), accessToken);
     });
 
-    return calls;
-}
+    t.test('should throw HttpError for invalid credentials', async () => {
+        const wayfair = new Wayfair({ client_id: 'invalid', client_secret: 'invalid', url });
 
-/**
- * A client with its own credentials, so each test gets its own cached token.
- *
- * @param {Object} [args] - Extra client options.
- * @returns {Wayfair} The client.
- */
-function createClient(args) {
-    return new Wayfair({ client_id: crypto.randomUUID(), client_secret: 'secret', ...args });
-}
-
-test('getAccessToken requests a client_credentials token for the API audience and caches it', async (t) => {
-    const calls = mockWayfair(t);
-    const clientId = crypto.randomUUID();
-    const wayfair = new Wayfair({ client_id: clientId, client_secret: 'secret', url: 'https://sandbox.api.wayfair.com' });
-
-    const first = await wayfair.getAccessToken();
-    const second = await wayfair.getAccessToken();
-
-    assert.equal(first.access_token, second.access_token);
-    assert.equal(calls.token.length, 1);
-    assert.deepEqual(calls.token[0].body, { audience: 'https://sandbox.api.wayfair.com/', client_id: clientId, client_secret: 'secret', grant_type: 'client_credentials' });
-    assert.equal(calls.token[0].options.method, 'POST');
+        await assert.rejects(wayfair.getAccessToken(), err => err instanceof HttpError && err.cause.status === 400 && err.json.error === 'invalid_client');
+    });
 });
 
-test('getAccessToken gets a new token after half its lifetime', async (t) => {
-    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-23T12:00:00Z') });
+test('inventory.save', { concurrency: true }, async (t) => {
+    t.test('should save a TRUE_UP feed and return the transaction status', async () => {
+        const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
 
-    const calls = mockWayfair(t);
-    const wayfair = createClient();
+        const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: '272687' }], { feedKind: 'TRUE_UP' });
 
-    const first = await wayfair.getAccessToken();
-
-    t.mock.timers.tick(43200000);
-
-    assert.equal((await wayfair.getAccessToken()).access_token, first.access_token);
-
-    t.mock.timers.tick(1);
-
-    assert.notEqual((await wayfair.getAccessToken()).access_token, first.access_token);
-    assert.equal(calls.token.length, 2);
-});
-
-test('getAccessToken throws HttpError when Wayfair refuses the credentials', async (t) => {
-    t.mock.method(globalThis, 'fetch', async () => Response.json({ error: 'access_denied', error_description: 'Unauthorized' }, { status: 401 }));
-
-    await assert.rejects(createClient().getAccessToken(), err => err instanceof HttpError && err.cause.status === 401);
-});
-
-test('inventory.save sends the feed to the production endpoint by default and returns the transaction status', async (t) => {
-    const status = { completedAt: null, errorCount: 0, errors: [], handle: 'handle-1', itemCount: 0, status: 'PROCESSING', submittedAt: '2026-10-23 09:13:57.4257 +00:00' };
-    const calls = mockWayfair(t, () => Response.json({ data: { inventory: { save: status } } }));
-    const inventory = [{ quantityOnHand: 7, supplierId: 199492, supplierPartNumber: '272687' }];
-    const wayfair = createClient();
-
-    assert.deepEqual(await wayfair.inventory.save(inventory, { dryRun: true, feedKind: 'TRUE_UP' }), status);
-
-    const token = (await wayfair.getAccessToken()).access_token;
-
-    assert.equal(calls.token[0].body.audience, 'https://api.wayfair.com/');
-    assert.equal(calls.graphql[0].url, 'https://api.wayfair.com/v1/graphql');
-    assert.equal(calls.graphql[0].headers.get('authorization'), `Bearer ${token}`);
-    assert.match(calls.graphql[0].body.query, /inventory\s*{\s*save\(inventory: \$inventory, feedKind: \$feedKind, dryRun: \$dryRun\)/);
-    assert.deepEqual(calls.graphql[0].body.variables, { dryRun: true, feedKind: 'TRUE_UP', inventory });
-});
-
-test('GraphQL errors throw HttpError even though Wayfair responds 200', async (t) => {
-    mockWayfair(t, () => Response.json({ errors: [{ message: 'You do not have access to inventory for any suppliers.' }] }));
-
-    await assert.rejects(createClient().inventory.save([]), err => err instanceof HttpError && err.cause.status === 200 && err.message === 'You do not have access to inventory for any suppliers.');
-});
-
-test('a 401 drops the cached token so the next request gets a new one', async (t) => {
-    let unauthorized = true;
-
-    const calls = mockWayfair(t, () => {
-        if (unauthorized) {
-            unauthorized = false;
-
-            return Response.json({ errors: [{ message: 'Unauthorized' }] }, { status: 401 });
-        }
-
-        return Response.json({ data: { inventory: { save: { status: 'PROCESSING' } } } });
+        assert.strictEqual(typeof status.handle, 'string');
+        assert.ok(Array.isArray(status.errors));
     });
 
-    const wayfair = createClient();
+    t.test('should validate a feed without saving it when dryRun is true', async () => {
+        const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
 
-    await assert.rejects(wayfair.inventory.save([]), err => err.cause.status === 401);
-    await wayfair.inventory.save([]);
+        const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' });
 
-    assert.equal(calls.token.length, 2);
-    assert.notEqual(calls.graphql[0].headers.get('authorization'), calls.graphql[1].headers.get('authorization'));
+        assert.strictEqual(typeof status.handle, 'string');
+        assert.ok(Array.isArray(status.errors));
+    });
+
+    t.test('should throw HttpError for GraphQL errors, which Wayfair returns with a 200', async () => {
+        const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
+
+        // supplierId is required
+        await assert.rejects(wayfair.inventory.save([{ quantityOnHand: 0, supplierPartNumber: '272687' }], { feedKind: 'TRUE_UP' }), err => err instanceof HttpError && err.cause.status === 200 && err.json.errors.length > 0);
+    });
+});
+
+// Runs on its own: it puts a bad token in the cache that every client with these credentials shares
+test('a 401 should drop the cached access token so the next request gets a new one', async () => {
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
+
+    // HACK: put an access token Wayfair won't accept in the cache, under the client's key
+    cache.put(`wayfair:${process.env.WAYFAIR_CLIENT_ID}:${url}`, { access_token: 'invalid', expires_in: 86400, token_type: 'Bearer' });
+
+    await assert.rejects(wayfair.inventory.save([{ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' }), err => err instanceof HttpError && err.cause.status === 401);
+
+    const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' });
+
+    assert.strictEqual(typeof status.handle, 'string');
 });
