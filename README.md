@@ -4,7 +4,7 @@
 [![npm version](https://img.shields.io/npm/v/@stores.com/wayfair)](https://www.npmjs.com/package/@stores.com/wayfair)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A Node.js client for Wayfair's supplier APIs: dropship inventory feeds and dropship purchase orders.
+A Node.js client for Wayfair's dropship inventory API.
 
 ## Installation
 
@@ -51,20 +51,6 @@ See: https://developer.wayfair.io/posts/api-access-tokens
 
 ```javascript
 const accessToken = await wayfair.getAccessToken();
-```
-
-### getDropshipPurchaseOrders(variables, options)
-
-Get dropship purchase orders. Leave out `hasResponse` to get open and accepted purchase orders alike. `fromDate` can be a `Date`.
-
-Wayfair returns at most 25 per call and allows one call every 3 seconds. With `autoPagination`, the client pages through every purchase order from `fromDate` on, oldest first, 3 seconds apart. Wayfair has no paging cursor, so each page starts at the last page's newest `poDate`. If more than 25 purchase orders share one `poDate`, the ones after the 25th are missed.
-
-`products.isCancelled` is left out in the sandbox, which doesn't have it.
-
-See: https://developer.wayfair.io/posts/dropship-orders-asn
-
-```javascript
-const purchaseOrders = await wayfair.getDropshipPurchaseOrders({ fromDate: new Date('2026-10-01') }, { autoPagination: true });
 ```
 
 ### inventory.save(inventory, options)
