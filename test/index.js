@@ -46,11 +46,20 @@ test('inventory.save', { concurrency: true }, async (t) => {
         assert.ok(Array.isArray(status.errors));
     });
 
+    t.test('should return the rows Wayfair rejects in errors and still resolve', async () => {
+        const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
+
+        // supplierId is required on every row
+        const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' });
+
+        assert.ok(status.errors.length > 0);
+    });
+
     t.test('should throw HttpError for GraphQL errors, which Wayfair returns with a 200', async () => {
         const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
 
-        // supplierId is required
-        await assert.rejects(wayfair.inventory.save([{ quantityOnHand: 0, supplierPartNumber: '272687' }], { feedKind: 'TRUE_UP' }), err => err instanceof HttpError && err.cause.status === 200 && err.json.errors.length > 0);
+        // Wayfair rejects the whole request when there's no inventory
+        await assert.rejects(wayfair.inventory.save([], { dryRun: true, feedKind: 'TRUE_UP' }), err => err instanceof HttpError && err.cause.status === 200 && err.json.errors.length > 0);
     });
 });
 
