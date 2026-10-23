@@ -274,31 +274,31 @@ function Wayfair(args) {
             pageVariables.fromDate = `${variables.fromDate.toISOString().replace('T', ' ').replace('Z', '')}000 +00:00`;
         }
 
-        if (!options.autoPagination) {
-            return (await request(query, pageVariables, options)).getDropshipPurchaseOrders;
+        if (options.autoPagination) {
+            pageVariables.limit = variables.limit || 25;
+            pageVariables.sortOrder = 'ASC';
         }
 
-        pageVariables.limit = variables.limit || 25;
-        pageVariables.sortOrder = 'ASC';
+        const purchaseOrders = new Map();
 
-        const purchaseOrders = [];
+        // Wayfair has no paging cursor, so the next page starts at this page's newest poDate (which returns that purchase order again)
+        const fetchPurchaseOrders = async (fromDate) => {
+            const page = (await request(query, { ...pageVariables, fromDate }, options)).getDropshipPurchaseOrders;
+            const count = purchaseOrders.size;
 
-        for (;;) {
-            const page = (await request(query, pageVariables, options)).getDropshipPurchaseOrders;
-            const newPurchaseOrders = page.filter(po => !purchaseOrders.some(p => p.poNumber === po.poNumber));
+            page.forEach(po => purchaseOrders.set(po.poNumber, po));
 
-            purchaseOrders.push(...newPurchaseOrders);
-
-            // Stop on the last page, or when a full page shares one poDate and paging can't move past it
-            if (page.length < pageVariables.limit || !newPurchaseOrders.length) {
-                return purchaseOrders;
+            // A full page that brought new purchase orders may have more after it
+            if (options.autoPagination && page.length === pageVariables.limit && purchaseOrders.size > count) {
+                // Wayfair allows one request every 3 seconds
+                await timers.setTimeout(3000);
+                await fetchPurchaseOrders(page[page.length - 1].poDate);
             }
+        };
 
-            // The next page starts at this page's newest poDate, which returns that purchase order again
-            pageVariables.fromDate = page[page.length - 1].poDate;
+        await fetchPurchaseOrders(pageVariables.fromDate);
 
-            await timers.setTimeout(3000);
-        }
+        return Array.from(purchaseOrders.values());
     };
 
     this.inventory = {
