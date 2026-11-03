@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Add `getDropshipPurchaseOrders(variables, options)`, with `autoPagination`.
+- Add `purchaseOrders.accept(variables, options)` and `purchaseOrders.shipment(notice, options)` for acceptances and ship notices.
+- Test them against Wayfair's sandbox, which unlocks the order API in production.
+
 ## 0.1.2
 
 - Describe the package as a client for the Wayfair API, which it will grow to cover, not only its dropship inventory API.

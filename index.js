@@ -329,8 +329,10 @@ function Wayfair(args) {
         /**
          * Accept a dropship purchase order's line items. Backorders can't be sent through the API; they're done on Partner Home's Dropship Orders page.
          *
+         * Wayfair processes the acceptance after responding. Line items it rejects, such as ones already accepted, come back in errors.
+         *
          * @param {Object} variables - Mutation arguments.
-         * @param {Array.<Object>} variables.lineItems - Line items: { estimatedShipDate, partNumber, quantity, unitPrice }. partNumber and unitPrice must match the purchase order.
+         * @param {Array.<Object>} variables.lineItems - Line items: { estimatedShipDate (Date or ISO 8601 string), partNumber, quantity, unitPrice }. partNumber and unitPrice must match the purchase order.
          * @param {string} variables.poNumber - The purchase order number.
          * @param {string} variables.shipSpeed - The purchase order's ship speed, e.g. 'GROUND'.
          * @param {Object} [options] - Per-call options.
@@ -353,7 +355,9 @@ function Wayfair(args) {
         },
 
         /**
-         * Send a ship notice (ASN) for a dropship purchase order, as soon as it leaves the warehouse.
+         * Send a ship notice (ASN) for a dropship purchase order, as soon as it leaves the warehouse. shipDate can be up to 10 days in the past and 1 day in the future.
+         *
+         * Wayfair processes the notice after responding, and takes the same notice again without an error, so send each one once.
          *
          * @param {Object} notice - The ShipNoticeInput: carrierCode, destinationAddress, packageCount, poNumber, shipDate, shipSpeed, sourceAddress, supplierId, trackingNumber, and smallParcelShipments or largeParcelShipments.
          * @param {Object} [options] - Per-call options.
