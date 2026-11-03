@@ -1,5 +1,6 @@
 const assert = require('node:assert');
 const test = require('node:test');
+const timers = require('node:timers/promises');
 
 const cache = require('memory-cache');
 
@@ -229,5 +230,69 @@ test('purchaseOrders', async (t) => {
             supplierId,
             trackingNumber: '999999999999'
         }), err => err instanceof HttpError && err.json.errors[0].message === 'Invalid purchase order number provided');
+    });
+});
+
+// What the sandbox can't show: production URLs, a request Wayfair rate limits, and a ship notice Wayfair takes
+test('mocked responses', async (t) => {
+    // Answers the token request, and every other request with respond(request). Returns every request sent, token request included.
+    const mockFetch = (t, respond) => {
+        const requests = [];
+
+        t.mock.method(globalThis, 'fetch', async (url, init) => {
+            const request = { body: JSON.parse(init.body), url };
+
+            requests.push(request);
+
+            return url === 'https://sso.auth.wayfair.com/oauth/token' ? Response.json({ access_token: 'mock', expires_in: 86400, token_type: 'Bearer' }) : respond(request);
+        });
+
+        return requests;
+    };
+
+    await t.test('should use production URLs unless sandbox is set', async (t) => {
+        const requests = mockFetch(t, () => Response.json({ data: { dropshipOrders: { edges: [], pageInfo: { hasNextPage: false } }, inventory: { save: { handle: 'mock' } } } }));
+        const wayfair = new Wayfair({ client_id: 'production', client_secret: 'mock' });
+
+        await wayfair.inventory.save([]);
+        await wayfair.dropshipOrders();
+
+        assert.deepStrictEqual(requests.map(request => request.url), ['https://sso.auth.wayfair.com/oauth/token', 'https://api.wayfair.com/v1/graphql', 'https://api.wayfair.io/2026-09/dropship-orders/graphql']);
+        assert.strictEqual(requests[0].body.audience, 'https://api.wayfair.com/');
+    });
+
+    await t.test('autoPagination should ask for 250 orders a page when first is missing', async (t) => {
+        const requests = mockFetch(t, () => Response.json({ data: { dropshipOrders: { edges: [], pageInfo: { hasNextPage: false } } } }));
+        const wayfair = new Wayfair({ client_id: 'autoPagination', client_secret: 'mock' });
+
+        await wayfair.dropshipOrders({ filter: { orderStatus: ['NEW'] } }, { autoPagination: true });
+
+        assert.strictEqual(requests.at(-1).body.variables.first, 250);
+    });
+
+    await t.test('a 429 should wait as many seconds as Retry-After says, or 1, then send the same request again', async (t) => {
+        const responses = [
+            new Response(null, { headers: { 'Retry-After': '3' }, status: 429 }),
+            new Response(null, { status: 429 }),
+            Response.json({ data: { acceptDropshipOrder: { errors: [], purchaseOrder: { purchaseOrderNumber: 'CS10002001', status: 'PROCESSING' } } } })
+        ];
+        const requests = mockFetch(t, () => responses.shift());
+        const wait = t.mock.method(timers, 'setTimeout', async () => {});
+        const wayfair = new Wayfair({ client_id: 'rateLimited', client_secret: 'mock', supplierId });
+
+        const result = await wayfair.acceptDropshipOrder({ purchaseOrderNumber: 'CS10002001' });
+        const accepts = requests.filter(request => request.url === 'https://api.wayfair.io/2026-09/dropship-orders/graphql');
+
+        assert.deepStrictEqual(wait.mock.calls.map(call => call.arguments[0]), [3000, 1000]);
+        assert.strictEqual(accepts.length, 3);
+        assert.ok(accepts.every(request => request.body.variables.input.purchaseOrderNumber === 'CS10002001'));
+        assert.strictEqual(result.purchaseOrder.status, 'PROCESSING');
+    });
+
+    await t.test('purchaseOrders.shipment should return the transaction status of a notice Wayfair takes', async (t) => {
+        mockFetch(t, () => Response.json({ data: { purchaseOrders: { shipment: { errors: [], handle: 'mock', status: 'NEW' } } } }));
+        const wayfair = new Wayfair({ client_id: 'shipment', client_secret: 'mock' });
+
+        assert.deepStrictEqual(await wayfair.purchaseOrders.shipment({ poNumber: 'CS10001081' }), { errors: [], handle: 'mock', status: 'NEW' });
     });
 });
