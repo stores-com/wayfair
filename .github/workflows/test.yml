@@ -34,7 +34,6 @@ jobs:
       env:
         WAYFAIR_CLIENT_ID: ${{ secrets.WAYFAIR_CLIENT_ID }}
         WAYFAIR_CLIENT_SECRET: ${{ secrets.WAYFAIR_CLIENT_SECRET }}
-        WAYFAIR_SUPPLIER_ID: ${{ secrets.WAYFAIR_SUPPLIER_ID }}
       run: |
         node --test --test-force-exit --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=lcov.info
 

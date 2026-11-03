@@ -8,6 +8,9 @@ const HttpError = require('@stores.com/http-error');
 const Wayfair = require('../index');
 
 // Wayfair's sandbox only counts an inventory feed toward production access when it has at least 20 rows
+// Our supplier ID, which inventory feeds, WF-Supplier-Id and ship notices need. Not our warehouse's ID (463230): Wayfair takes that in an inventory feed without an error and ignores it.
+const supplierId = 457479;
+
 const partNumbers = ['227217', '227218', '227219', '227221', '227223', '227224', '227226', '227227', '227228', '227229', '227230', '227232', '227234', '227235', '227240', '227242', '227244', '267204', '272686', '272687'];
 
 test('getAccessToken', { concurrency: true }, async (t) => {
@@ -31,7 +34,7 @@ test('inventory.save', { concurrency: true }, async (t) => {
     t.test('should save a TRUE_UP feed and return the transaction status', async () => {
         const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true });
 
-        const status = await wayfair.inventory.save(partNumbers.map(partNumber => ({ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: partNumber })), { feedKind: 'TRUE_UP' });
+        const status = await wayfair.inventory.save(partNumbers.map(partNumber => ({ quantityOnHand: 0, supplierId, supplierPartNumber: partNumber })), { feedKind: 'TRUE_UP' });
 
         assert.strictEqual(typeof status.handle, 'string');
         assert.ok(Array.isArray(status.errors));
@@ -40,7 +43,7 @@ test('inventory.save', { concurrency: true }, async (t) => {
     t.test('should validate a feed without saving it when dryRun is true', async () => {
         const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true });
 
-        const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' });
+        const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierId, supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' });
 
         assert.strictEqual(typeof status.handle, 'string');
         assert.ok(Array.isArray(status.errors));
@@ -70,16 +73,16 @@ test('a 401 should drop the cached access token so the next request gets a new o
     // HACK: put an access token Wayfair won't accept in the cache, under the client's key
     cache.put(`wayfair:${process.env.WAYFAIR_CLIENT_ID}:https://sandbox.api.wayfair.com`, { access_token: 'invalid', expires_in: 86400, token_type: 'Bearer' });
 
-    await assert.rejects(wayfair.inventory.save([{ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' }), err => err instanceof HttpError && err.cause.status === 401);
+    await assert.rejects(wayfair.inventory.save([{ quantityOnHand: 0, supplierId, supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' }), err => err instanceof HttpError && err.cause.status === 401);
 
-    const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID), supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' });
+    const status = await wayfair.inventory.save([{ quantityOnHand: 0, supplierId, supplierPartNumber: '272687' }], { dryRun: true, feedKind: 'TRUE_UP' });
 
     assert.strictEqual(typeof status.handle, 'string');
 });
 
 // Wayfair's sandbox certification scenarios for the 2026-09 APIs, with the sandbox's fixed purchase orders. The sandbox allows 20 requests a minute on the 2026-09 route, which both APIs share; the tests below make 12 there, plus one per 100 orders in the sandbox.
 test('dropshipOrders', async (t) => {
-    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID) });
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId });
 
     await t.test('should page forward through every order without duplicates, then back', async () => {
         const sort = { direction: 'DESC', field: 'CREATED_AT' };
@@ -109,7 +112,7 @@ test('dropshipOrders', async (t) => {
         assert.ok(orders.every(order => order.status === 'NEW' && order.lineItems.some(lineItem => lineItem.status === 'NEW') && [order, ...order.lineItems].some(item => item.tasks?.length)));
     });
 
-    // Only the PII-on half of the scenario: a sandbox application has every permission, so it can't get a token without orders:read-dropship-orders-pii
+    // Only the PII-on half of the scenario: the PII-off half needs a second sandbox application without orders:read-dropship-orders-pii
     await t.test('should return every address field with the PII permission', async () => {
         const order = (await wayfair.dropshipOrders({ filter: { purchaseOrderNumbers: ['CS10001081'] } })).edges[0].node;
 
@@ -178,7 +181,7 @@ test('dropshipOrders', async (t) => {
 });
 
 test('acceptDropshipOrder', { concurrency: true }, async (t) => {
-    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID) });
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId });
 
     t.test('should accept a new purchase order and return it', async () => {
         const result = await wayfair.acceptDropshipOrder({ purchaseOrderNumber: 'CS10002001' });
@@ -206,7 +209,7 @@ test('acceptDropshipOrder', { concurrency: true }, async (t) => {
 });
 
 test('purchaseOrders', async (t) => {
-    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID) });
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId });
 
     // The sandbox order with every address field filled in, which a ship notice needs
     const order = (await wayfair.dropshipOrders({ filter: { purchaseOrderNumbers: ['CS10001081'] } })).edges[0].node;
@@ -223,8 +226,7 @@ test('purchaseOrders', async (t) => {
             shipSpeed: 'GROUND',
             smallParcelShipments: [{ items: order.lineItems.map(lineItem => ({ partNumber: lineItem.supplierPartNumber, quantity: lineItem.quantity })), package: { code: { type: 'TRACKING_NUMBER', value: '999999999999' }, weight: 1 } }],
             sourceAddress: { city: order.warehouseDetails.address.city, country: order.warehouseDetails.address.country, name: order.warehouseDetails.address.name, postalCode: order.warehouseDetails.address.postalCode, state: order.warehouseDetails.address.state, streetAddress1: order.warehouseDetails.address.address1 },
-            // A ship notice's supplierId is the warehouse the order ships from
-            supplierId: order.warehouseDetails.id,
+            supplierId,
             trackingNumber: '999999999999'
         }), err => err instanceof HttpError && err.json.errors[0].message === 'Invalid purchase order number provided');
     });

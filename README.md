@@ -66,6 +66,8 @@ Send a dropship inventory feed. A `TRUE_UP` feed is a complete listing and is re
 
 Wayfair processes the feed after responding. Rows it rejects come back in `errors`, and it still saves the rest. This is Wayfair's v1 API, which has no newer version.
 
+Each row's `supplierId` is your supplier ID when Wayfair has you at the parent level (one quantity across all your warehouses), or the warehouse's ID at the child level. Wayfair accepts a feed with the wrong one without an error and never applies it.
+
 See: https://developer.wayfair.io/posts/dropship-inventory
 
 ```javascript
@@ -126,7 +128,7 @@ if (result.errors.length) {
 
 Send a ship notice (ASN) once a purchase order leaves the warehouse. Wayfair takes the same notice again without an error, so send each one once. It allows one ship notice every 3 seconds, with up to 10 line items each. This is Wayfair's v1 API, which has no newer version.
 
-From a `dropshipOrders` order: `poNumber` is `purchaseOrderNumber`, `supplierId` is `warehouseDetails.id` (the warehouse it ships from), `shipSpeed` is `shippingInfo.shipSpeed` (which can be null, or `EXPRESS` or a `BIG_AND_BULKY_*` speed v1 doesn't have), `destinationAddress` is `shippingAddress`, `sourceAddress` is `warehouseDetails.address` (`address1` and `address2` become `streetAddress1` and `streetAddress2`), and each item's `partNumber` is a line item's `supplierPartNumber`.
+From a `dropshipOrders` order: `poNumber` is `purchaseOrderNumber`, `supplierId` is the supplier ID the purchase order belongs to, which Wayfair checks: your supplier ID (the client's `supplierId`), or a warehouse ID only if Wayfair set you up for warehouse-level purchase orders, `shipSpeed` is `shippingInfo.shipSpeed` (which can be null, or `EXPRESS` or a `BIG_AND_BULKY_*` speed v1 doesn't have), `destinationAddress` is `shippingAddress`, `sourceAddress` is `warehouseDetails.address` (`address1` and `address2` become `streetAddress1` and `streetAddress2`), and each item's `partNumber` is a line item's `supplierPartNumber`.
 
 See: https://developer.wayfair.io/posts/dropship-orders-asn
 
@@ -149,8 +151,8 @@ Every method takes `options.timeout` to override the client's timeout (30 second
 
 ## Tests
 
-The tests run against Wayfair's sandbox, never production. They include the mandatory and recommended sandbox certification scenarios for the 2026-09 APIs, which Wayfair requires before it unlocks them in production, except the PII-off half of the redacted PII scenario: it needs an application without the `orders:read-dropship-orders-pii` permission, and a sandbox application has every permission. They need a sandbox application's `WAYFAIR_CLIENT_ID` and `WAYFAIR_CLIENT_SECRET`, and the sandbox `WAYFAIR_SUPPLIER_ID`.
+The tests run against Wayfair's sandbox, never production. They include the mandatory and recommended sandbox certification scenarios for the 2026-09 APIs, which Wayfair requires before it unlocks them in production, except the PII-off half of the redacted PII scenario, which needs a second sandbox application without the `orders:read-dropship-orders-pii` permission. They need a sandbox application's `WAYFAIR_CLIENT_ID` and `WAYFAIR_CLIENT_SECRET`.
 
 ```
-$ WAYFAIR_CLIENT_ID=... WAYFAIR_CLIENT_SECRET=... WAYFAIR_SUPPLIER_ID=... npm test
+$ WAYFAIR_CLIENT_ID=... WAYFAIR_CLIENT_SECRET=... npm test
 ```

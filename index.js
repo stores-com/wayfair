@@ -375,6 +375,8 @@ function Wayfair(args) {
          *
          * Wayfair processes the feed after responding. Rows it rejects come back in errors, and it still saves the rest. This is Wayfair's v1 API, which has no newer version.
          *
+         * Each row's supplierId is your supplier ID when Wayfair has you at the parent level (one quantity across all your warehouses), or the warehouse's ID at the child level. Wayfair accepts a feed with the wrong one without an error and never applies it.
+         *
          * @param {Array.<Object>} inventory - Rows: { quantityOnHand, supplierId, supplierPartNumber } plus any optional inventoryInput fields (discontinued, itemNextAvailabilityDate, productNameAndOptions, quantityBackordered, quantityOnOrder).
          * @param {Object} [options] - Feed and per-call options.
          * @param {boolean} [options.dryRun] - Validate the feed without saving it.
@@ -402,7 +404,7 @@ function Wayfair(args) {
         /**
          * Send a ship notice (ASN) for a dropship purchase order, as soon as it leaves the warehouse. shipDate can be up to 10 days in the past and 1 day in the future.
          *
-         * Wayfair processes the notice after responding, and takes the same notice again without an error, so send each one once. It allows one notice every 3 seconds, with up to 10 line items each. This is Wayfair's v1 API, which has no newer version. From a dropshipOrders order: poNumber is purchaseOrderNumber, supplierId is warehouseDetails.id (the warehouse it ships from), shipSpeed is shippingInfo.shipSpeed (which can be null, or EXPRESS or a BIG_AND_BULKY_* speed v1 doesn't have), destinationAddress is shippingAddress, sourceAddress is warehouseDetails.address (address1 and address2 become streetAddress1 and streetAddress2), and each item's partNumber is a line item's supplierPartNumber.
+         * Wayfair processes the notice after responding, and takes the same notice again without an error, so send each one once. It allows one notice every 3 seconds, with up to 10 line items each. This is Wayfair's v1 API, which has no newer version. From a dropshipOrders order: poNumber is purchaseOrderNumber, supplierId is the supplier ID the purchase order belongs to, which Wayfair checks: your supplier ID (the client's supplierId), or a warehouse ID only if Wayfair set you up for warehouse-level purchase orders, shipSpeed is shippingInfo.shipSpeed (which can be null, or EXPRESS or a BIG_AND_BULKY_* speed v1 doesn't have), destinationAddress is shippingAddress, sourceAddress is warehouseDetails.address (address1 and address2 become streetAddress1 and streetAddress2), and each item's partNumber is a line item's supplierPartNumber.
          *
          * @param {Object} notice - The ShipNoticeInput: carrierCode, destinationAddress, packageCount, poNumber, shipDate, shipSpeed, sourceAddress, supplierId, trackingNumber, and smallParcelShipments or largeParcelShipments.
          * @param {Object} [options] - Per-call options.
