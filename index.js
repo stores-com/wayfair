@@ -1,6 +1,21 @@
+const timers = require('node:timers/promises');
+
 const cache = require('memory-cache');
 
 const HttpError = require('@stores.com/http-error');
+
+// Fields Wayfair returns for an inventory feed, an acceptance, or a ship notice
+const transactionStatusFields = `
+    completedAt
+    errorCount
+    errors {
+        key
+        message
+    }
+    handle
+    itemCount
+    status
+    submittedAt`;
 
 /**
  * A client for the Wayfair API. Method names follow Wayfair's GraphQL schema.
@@ -109,6 +124,178 @@ function Wayfair(args) {
         return json;
     };
 
+    /**
+     * Get dropship purchase orders. Leave out hasResponse to get open and accepted purchase orders alike.
+     *
+     * Wayfair returns at most 25 per call and allows one call every 3 seconds. With autoPagination, this pages through every purchase order from fromDate on, oldest first, 3 seconds apart. Wayfair has no paging cursor, so each page starts at the last page's newest poDate; if more than 25 purchase orders share one poDate, the ones after the 25th are missed.
+     *
+     * products.isCancelled is left out in the sandbox, which doesn't have it.
+     *
+     * @param {Object} [variables] - Query arguments.
+     * @param {Date|string} [variables.fromDate] - Earliest purchase order date. A string must be ISO 8601, e.g. 2026-05-01 00:00:00.000000 +00:00 (Wayfair's format) or 2026-05-01T00:00:00.000Z.
+     * @param {boolean} [variables.hasResponse] - false for open purchase orders, true for accepted ones.
+     * @param {number} [variables.limit] - Purchase orders per call: Wayfair's default is 10, and 25 with autoPagination.
+     * @param {Array.<string>} [variables.poNumbers] - Only these purchase orders.
+     * @param {string} [variables.sortOrder] - 'ASC' or 'DESC' by poDate. Always 'ASC' with autoPagination.
+     * @param {Object} [options] - Per-call options.
+     * @param {boolean} [options.autoPagination=false] - Page through every purchase order from fromDate on.
+     * @param {number} [options.timeout] - Override the client timeout in milliseconds.
+     * @returns {Promise<Array.<Object>>} The purchase orders.
+     * @throws {HttpError} If Wayfair responds with an error.
+     * @see https://developer.wayfair.io/posts/docs/orders-api/reference/GraphQL/v1.0.0
+     * @example
+     * const purchaseOrders = await wayfair.getDropshipPurchaseOrders({ fromDate: new Date('2026-10-01') }, { autoPagination: true });
+     */
+    this.getDropshipPurchaseOrders = async (variables = {}, options = {}) => {
+        const query = `query getDropshipPurchaseOrders($fromDate: IsoDateTime, $hasResponse: Boolean, $limit: Int32, $poNumbers: [String], $sortOrder: SortOrder) {
+            getDropshipPurchaseOrders(fromDate: $fromDate, hasResponse: $hasResponse, limit: $limit, poNumbers: $poNumbers, sortOrder: $sortOrder) {
+                billingInfo {
+                    vatNumber
+                }
+                billTo {
+                    address1
+                    address2
+                    address3
+                    city
+                    country
+                    name
+                    phoneNumber
+                    postalCode
+                    state
+                }
+                customerAddress1
+                customerAddress2
+                customerCity
+                customerCountry
+                customerEmail
+                customerName
+                customerPostalCode
+                customerState
+                deliveryMethodCode
+                estimatedShipDate
+                id
+                orderId
+                orderType
+                packingSlipUrl
+                poDate
+                poNumber
+                products {
+                    customComment
+                    estShipDate
+                    event {
+                        endDate
+                        id
+                        name
+                        startDate
+                        type
+                    }
+                    fillDate
+                    ${baseUrl.includes('sandbox') ? '' : 'isCancelled'}
+                    isTscaCompliant
+                    name
+                    partNumber
+                    pieceCount
+                    price
+                    quantity
+                    sku
+                    totalCost
+                    totalWeight
+                    twoDayGuaranteeDeliveryDeadline
+                    weight
+                }
+                salesChannelName
+                scheduledDeliveryDate
+                shippingInfo {
+                    carrierCode
+                    crossDockAgent {
+                        id
+                        name
+                    }
+                    deliveryAgent {
+                        id
+                        name
+                    }
+                    poolPointAgent {
+                        id
+                        name
+                    }
+                    shipSpeed
+                }
+                shipTo {
+                    address1
+                    address2
+                    address3
+                    city
+                    country
+                    name
+                    phoneNumber
+                    postalCode
+                    state
+                }
+                storePrefix
+                supplierAddress1
+                supplierAddress2
+                supplierAddress3
+                supplierCity
+                supplierId
+                supplierName
+                supplierPostalCode
+                supplierState
+                warehouse {
+                    address {
+                        address1
+                        address2
+                        address3
+                        city
+                        country
+                        name
+                        phoneNumber
+                        postalCode
+                        state
+                    }
+                    id
+                    name
+                    supplier {
+                        currency
+                        id
+                        name
+                        shortName
+                        status
+                        websiteURL
+                    }
+                }
+            }
+        }`;
+
+        const pageVariables = { ...variables };
+
+        if (options.autoPagination) {
+            pageVariables.limit = variables.limit || 25;
+            pageVariables.sortOrder = 'ASC';
+        }
+
+        const purchaseOrders = new Map();
+
+        // Wayfair has no paging cursor, so the next page starts at this page's newest poDate (which returns that purchase order again)
+        const fetchPurchaseOrders = async (fromDate) => {
+            const page = (await request(query, { ...pageVariables, fromDate }, options)).getDropshipPurchaseOrders;
+            const count = purchaseOrders.size;
+
+            page.forEach(po => purchaseOrders.set(po.poNumber, po));
+
+            // A full page that brought new purchase orders may have more after it
+            if (options.autoPagination && page.length === pageVariables.limit && purchaseOrders.size > count) {
+                // Wayfair allows one request every 3 seconds
+                await timers.setTimeout(3000);
+                await fetchPurchaseOrders(page[page.length - 1].poDate);
+            }
+        };
+
+        await fetchPurchaseOrders(pageVariables.fromDate);
+
+        return Array.from(purchaseOrders.values());
+    };
+
     this.inventory = {
         /**
          * Send a dropship inventory feed. A TRUE_UP feed is a complete listing and is required at least once every 24 hours; a DIFFERENTIAL feed (Wayfair's default) has only the products whose quantities changed, ideally every 30 minutes. The sandbox only takes TRUE_UP feeds, truncated at 500 rows.
@@ -129,22 +316,63 @@ function Wayfair(args) {
         save: async (inventory, options = {}) => {
             const mutation = `mutation saveInventory($dryRun: Boolean, $feedKind: inventoryFeedKind, $inventory: [inventoryInput]!) {
                 inventory {
-                    save(inventory: $inventory, feedKind: $feedKind, dryRun: $dryRun) {
-                        completedAt
-                        errorCount
-                        errors {
-                            key
-                            message
-                        }
-                        handle
-                        itemCount
-                        status
-                        submittedAt
+                    save(inventory: $inventory, feedKind: $feedKind, dryRun: $dryRun) {${transactionStatusFields}
                     }
                 }
             }`;
 
             return (await request(mutation, { dryRun: options.dryRun, feedKind: options.feedKind, inventory }, options)).inventory.save;
+        }
+    };
+
+    this.purchaseOrders = {
+        /**
+         * Accept a dropship purchase order's line items. Backorders can't be sent through the API; they're done on Partner Home's Dropship Orders page.
+         *
+         * @param {Object} variables - Mutation arguments.
+         * @param {Array.<Object>} variables.lineItems - Line items: { estimatedShipDate, partNumber, quantity, unitPrice }. partNumber and unitPrice must match the purchase order.
+         * @param {string} variables.poNumber - The purchase order number.
+         * @param {string} variables.shipSpeed - The purchase order's ship speed, e.g. 'GROUND'.
+         * @param {Object} [options] - Per-call options.
+         * @param {number} [options.timeout] - Override the client timeout in milliseconds.
+         * @returns {Promise<Object>} The transaction status.
+         * @throws {HttpError} If Wayfair responds with an error.
+         * @see https://developer.wayfair.io/posts/dropship-orders-asn
+         * @example
+         * const status = await wayfair.purchaseOrders.accept({ lineItems: [{ estimatedShipDate: '2026-10-24 00:00:00.000000 +00:00', partNumber: '272687', quantity: 1, unitPrice: 10.99 }], poNumber: 'CS000000001', shipSpeed: 'GROUND' });
+         */
+        accept: async (variables, options = {}) => {
+            const mutation = `mutation accept($lineItems: [AcceptedLineItemInput!]!, $poNumber: String!, $shipSpeed: ShipSpeed!) {
+                purchaseOrders {
+                    accept(poNumber: $poNumber, shipSpeed: $shipSpeed, lineItems: $lineItems) {${transactionStatusFields}
+                    }
+                }
+            }`;
+
+            return (await request(mutation, variables, options)).purchaseOrders.accept;
+        },
+
+        /**
+         * Send a ship notice (ASN) for a dropship purchase order, as soon as it leaves the warehouse.
+         *
+         * @param {Object} notice - The ShipNoticeInput: carrierCode, destinationAddress, packageCount, poNumber, shipDate, shipSpeed, sourceAddress, supplierId, trackingNumber, and smallParcelShipments or largeParcelShipments.
+         * @param {Object} [options] - Per-call options.
+         * @param {number} [options.timeout] - Override the client timeout in milliseconds.
+         * @returns {Promise<Object>} The transaction status.
+         * @throws {HttpError} If Wayfair responds with an error.
+         * @see https://developer.wayfair.io/posts/dropship-orders-asn
+         * @example
+         * const status = await wayfair.purchaseOrders.shipment({ carrierCode: 'FDEG', poNumber: 'CS000000001', ... });
+         */
+        shipment: async (notice, options = {}) => {
+            const mutation = `mutation shipment($notice: ShipNoticeInput!) {
+                purchaseOrders {
+                    shipment(notice: $notice) {${transactionStatusFields}
+                    }
+                }
+            }`;
+
+            return (await request(mutation, { notice }, options)).purchaseOrders.shipment;
         }
     };
 }

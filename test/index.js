@@ -79,3 +79,81 @@ test('a 401 should drop the cached access token so the next request gets a new o
 
     assert.strictEqual(typeof status.handle, 'string');
 });
+
+test('getDropshipPurchaseOrders', async (t) => {
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
+
+    // The sandbox's two newest purchase orders
+    const purchaseOrders = await wayfair.getDropshipPurchaseOrders({ limit: 2, sortOrder: 'DESC' });
+
+    // TODO remove: what the sandbox has
+    t.diagnostic(JSON.stringify(purchaseOrders.map(po => ({ estimatedShipDate: po.estimatedShipDate, poDate: po.poDate, poNumber: po.poNumber, products: po.products.map(p => ({ partNumber: p.partNumber, price: p.price, quantity: p.quantity })), shipSpeed: po.shippingInfo?.shipSpeed, storePrefix: po.storePrefix, supplierId: po.supplierId, warehouseId: po.warehouse?.id }))));
+    t.diagnostic(`open: ${(await wayfair.getDropshipPurchaseOrders({ hasResponse: false, limit: 25 })).length}, accepted: ${(await wayfair.getDropshipPurchaseOrders({ hasResponse: true, limit: 25 })).length}, supplier secret matches: ${purchaseOrders.map(po => String(po.supplierId) === process.env.WAYFAIR_SUPPLIER_ID)}`);
+
+    await t.test('should return purchase orders with their products', () => {
+        assert.strictEqual(purchaseOrders.length, 2);
+        assert.ok(purchaseOrders.every(po => po.poNumber && po.products.length));
+    });
+
+    await t.test('should return only the purchase orders in poNumbers', async () => {
+        const result = await wayfair.getDropshipPurchaseOrders({ poNumbers: [purchaseOrders[1].poNumber] });
+
+        assert.deepStrictEqual(result.map(po => po.poNumber), [purchaseOrders[1].poNumber]);
+    });
+
+    await t.test('should take a Date for fromDate', async () => {
+        assert.deepStrictEqual(await wayfair.getDropshipPurchaseOrders({ fromDate: new Date(Date.now() + 86400000) }), []);
+    });
+
+    await t.test('should page through every purchase order from fromDate with autoPagination', async () => {
+        // A full first page from the older one, so a second page starts at the newer one
+        const result = await wayfair.getDropshipPurchaseOrders({ fromDate: purchaseOrders[1].poDate, limit: 2 }, { autoPagination: true });
+
+        assert.ok(purchaseOrders.every(po => result.some(r => r.poNumber === po.poNumber)));
+    });
+});
+
+test('purchaseOrders', async (t) => {
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, url });
+
+    // An open purchase order if the sandbox has one, else the newest
+    const purchaseOrder = (await wayfair.getDropshipPurchaseOrders({ hasResponse: false, limit: 1 }))[0] || (await wayfair.getDropshipPurchaseOrders({ limit: 1, sortOrder: 'DESC' }))[0];
+
+    await t.test('accept should accept a purchase order and return the transaction status', async () => {
+        const status = await wayfair.purchaseOrders.accept({
+            lineItems: purchaseOrder.products.map(p => ({ estimatedShipDate: new Date(Date.now() + 86400000), partNumber: p.partNumber, quantity: p.quantity, unitPrice: p.price })),
+            poNumber: purchaseOrder.poNumber,
+            shipSpeed: purchaseOrder.shippingInfo.shipSpeed
+        });
+
+        // TODO remove: what the sandbox returns
+        t.diagnostic(`accept ${purchaseOrder.poNumber}: ${JSON.stringify(status)}`);
+
+        assert.strictEqual(typeof status.handle, 'string');
+        assert.ok(Array.isArray(status.errors));
+    });
+
+    await t.test('shipment should send a ship notice and return the transaction status', async () => {
+        const notice = {
+            carrierCode: 'FDEG',
+            destinationAddress: { city: purchaseOrder.shipTo.city, country: purchaseOrder.shipTo.country, name: purchaseOrder.shipTo.name, postalCode: purchaseOrder.shipTo.postalCode, state: purchaseOrder.shipTo.state, streetAddress1: purchaseOrder.shipTo.address1, streetAddress2: purchaseOrder.shipTo.address2 },
+            packageCount: 1,
+            poNumber: purchaseOrder.poNumber,
+            shipDate: new Date(),
+            shipSpeed: purchaseOrder.shippingInfo.shipSpeed,
+            smallParcelShipments: [{ items: purchaseOrder.products.map(p => ({ partNumber: p.partNumber, quantity: p.quantity })), package: { code: { type: 'TRACKING_NUMBER', value: '999999999999' }, weight: 1 } }],
+            sourceAddress: { city: purchaseOrder.warehouse.address.city, country: purchaseOrder.warehouse.address.country, name: purchaseOrder.warehouse.address.name, postalCode: purchaseOrder.warehouse.address.postalCode, state: purchaseOrder.warehouse.address.state, streetAddress1: purchaseOrder.warehouse.address.address1 },
+            supplierId: purchaseOrder.supplierId,
+            trackingNumber: '999999999999'
+        };
+
+        const status = await wayfair.purchaseOrders.shipment(notice);
+
+        // TODO remove: what the sandbox returns, and whether it takes the same ship notice twice
+        t.diagnostic(`shipment ${purchaseOrder.poNumber}: ${JSON.stringify(status)}`);
+        t.diagnostic(`shipment again: ${JSON.stringify(await wayfair.purchaseOrders.shipment(notice).catch(err => err.json || err.message))}`);
+
+        assert.strictEqual(typeof status.handle, 'string');
+        assert.ok(Array.isArray(status.errors));
+    });
+});
