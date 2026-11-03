@@ -36,7 +36,7 @@ const wayfair = new Wayfair({
 
 Wayfair unlocks each production permission only after it's used in the sandbox.
 
-Pass `supplierId` (e.g. `457479`) to send it as the `WF-Supplier-Id` header, which the 2026-09 APIs need when the access token carries no supplier claim.
+`dropshipOrders` and `acceptDropshipOrder` need `supplierId` (e.g. `457479`), sent as the `WF-Supplier-Id` header: Wayfair's access tokens carry no supplier claim, and without one the 2026-09 APIs refuse the request as `UNAUTHENTICATED`.
 
 `dropshipOrders` and `acceptDropshipOrder` use Wayfair's 2026-09 APIs (`https://api.wayfair.io/2026-09/dropship-orders/graphql`). `inventory.save` and `purchaseOrders.shipment` use its v1 API (`https://api.wayfair.com/v1/graphql`), because Wayfair has no newer version of either. One access token works for both.
 

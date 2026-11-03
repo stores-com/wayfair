@@ -131,7 +131,7 @@ const transactionStatusFields = `
  * @param {string} args.client_id - Client ID of an application from Wayfair's Developer Portal (Application Management).
  * @param {string} args.client_secret - The application's client secret.
  * @param {boolean} [args.sandbox=false] - Use Wayfair's sandbox, with a sandbox application.
- * @param {number} [args.supplierId] - Your supplier ID, sent as the WF-Supplier-Id header, which the 2026-09 APIs need when the access token carries no supplier claim.
+ * @param {number} [args.supplierId] - Your supplier ID, sent as the WF-Supplier-Id header. dropshipOrders and acceptDropshipOrder need it: Wayfair's access tokens carry no supplier claim, so without it the 2026-09 APIs refuse the request as UNAUTHENTICATED.
  * @param {number} [args.timeout=30000] - Request timeout in milliseconds.
  * @see https://developer.wayfair.io/posts/introduction
  * @example
