@@ -79,7 +79,7 @@ test('a 401 should drop the cached access token so the next request gets a new o
 
 // Wayfair's sandbox certification scenarios for the 2026-09 APIs, with the sandbox's fixed purchase orders. The sandbox allows 20 requests a minute on the 2026-09 route, which both APIs share; the tests below make 12 there, plus one per 100 orders in the sandbox.
 test('dropshipOrders', async (t) => {
-    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID) });
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true });
 
     await t.test('should page forward through every order without duplicates, then back', async () => {
         const sort = { direction: 'DESC', field: 'CREATED_AT' };
@@ -178,7 +178,7 @@ test('dropshipOrders', async (t) => {
 });
 
 test('acceptDropshipOrder', { concurrency: true }, async (t) => {
-    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID) });
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true });
 
     t.test('should accept a new purchase order and return it', async () => {
         const result = await wayfair.acceptDropshipOrder({ purchaseOrderNumber: 'CS10002001' });
@@ -206,7 +206,7 @@ test('acceptDropshipOrder', { concurrency: true }, async (t) => {
 });
 
 test('purchaseOrders', async (t) => {
-    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId: Number(process.env.WAYFAIR_SUPPLIER_ID) });
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true });
 
     // The sandbox order with every address field filled in, which a ship notice needs
     const order = (await wayfair.dropshipOrders({ filter: { purchaseOrderNumbers: ['CS10001081'] } })).edges[0].node;
