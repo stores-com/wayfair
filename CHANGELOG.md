@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- Breaking: replace the `url` option with `sandbox` (`true` for Wayfair's sandbox).
+- Add `dropshipOrders(variables, options)`, with `autoPagination`, and `acceptDropshipOrder(input, options)` on Wayfair's 2026-09 Dropship Orders and Accept Dropship Order APIs.
+- Add `purchaseOrders.shipment(notice, options)` for ship notices, on the v1 API: Wayfair has no newer version.
+- Wait for `Retry-After` and send the request again when Wayfair responds with a 429.
+- Add a `supplierId` option, sent as the `WF-Supplier-Id` header. The 2026-09 APIs need it, since Wayfair's access tokens carry no supplier claim.
+- Test the mandatory and recommended sandbox certification scenarios for both 2026-09 APIs against Wayfair's sandbox, except the PII-off half of the redacted PII scenario, which needs a second sandbox application without the PII permission.
+
 ## 0.1.2
 
 - Describe the package as a client for the Wayfair API, which it will grow to cover, not only its dropship inventory API.
