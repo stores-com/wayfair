@@ -38,7 +38,7 @@ Wayfair unlocks each production permission only after it's used in the sandbox.
 
 `dropshipOrders` and `acceptDropshipOrder` need `supplierId` (e.g. `457479`), sent as the `WF-Supplier-Id` header: Wayfair's access tokens carry no supplier claim, and without one the 2026-09 APIs refuse the request as `UNAUTHENTICATED`.
 
-`dropshipOrders` and `acceptDropshipOrder` use Wayfair's 2026-09 APIs (`https://api.wayfair.io/2026-09/dropship-orders/graphql`). `inventory.save` and `purchaseOrders.shipment` use its v1 API (`https://api.wayfair.com/v1/graphql`), because Wayfair has no newer version of either. One access token works for both.
+`dropshipOrders` and `acceptDropshipOrder` use Wayfair's 2026-09 APIs (`https://api.wayfair.io/2026-09/dropship-orders/graphql`). `inventory.save` and `purchaseOrders.shipment` use its v1 API (`https://api.wayfair.com/v1/graphql`), because Wayfair has no newer version of either, and so does `getDropshipPurchaseOrders`, because Wayfair doesn't give `dropshipOrders` to suppliers outside its beta. One access token works for both.
 
 Errors are thrown as [`HttpError`](https://github.com/stores-com/http-error). That includes GraphQL errors, which Wayfair returns with a 200; `err.json` holds Wayfair's response. When Wayfair responds to a GraphQL request with a 429, the client waits as many seconds as the `Retry-After` header says (1 if it's missing) and sends the same request again.
 
@@ -95,6 +95,23 @@ const dropshipOrders = await wayfair.dropshipOrders({
 }, { autoPagination: true });
 
 const orders = dropshipOrders.edges.map(edge => edge.node).filter(node => node.__typename === 'SupplierDropshipOrder');
+```
+
+### getDropshipPurchaseOrders(variables, options)
+
+Get dropship purchase orders from Wayfair's v1 API, oldest first by default. `variables` are the query's arguments: `fromDate` (a `Date` or an ISO 8601 string), `hasResponse` (`false` for open purchase orders, `true` for accepted ones; leave it out for both), `limit`, `poNumbers` and `sortOrder` (`ASC` or `DESC` by `poDate`). The result is an array of purchase orders.
+
+Wayfair returns 10 purchase orders a call unless `limit` says otherwise and allows one call every 3 seconds. It has no paging cursor, so with `autoPagination`, this pages through every purchase order from `fromDate` on, 100 a call unless `limit` says otherwise, oldest first, 3 seconds apart, each page starting at the last page's newest `poDate`. If more than `limit` purchase orders share one `poDate`, the ones after that many are missed.
+
+Dates come back in Wayfair's format, e.g. `2026-11-04 19:42:03.000000 -05:00`, which `new Date()` parses. `products.quantity` is a string, and `shipTo.country` is two letters, e.g. `US`. `products.isCancelled` is left out in the sandbox, which doesn't have it.
+
+See: https://developer.wayfair.io/posts/docs/orders-api/reference/GraphQL/v1.0.0
+
+```javascript
+const purchaseOrders = await wayfair.getDropshipPurchaseOrders({
+    fromDate: new Date(Date.now() - 14 * 86400000),
+    hasResponse: false
+}, { autoPagination: true });
 ```
 
 ### acceptDropshipOrder(input, options)

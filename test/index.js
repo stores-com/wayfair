@@ -209,6 +209,36 @@ test('acceptDropshipOrder', { concurrency: true }, async (t) => {
     });
 });
 
+// The v1 sandbox has its own purchase orders, not the 2026-09 sandbox's
+test('getDropshipPurchaseOrders', async (t) => {
+    const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true });
+
+    // The sandbox's two newest purchase orders
+    const purchaseOrders = await wayfair.getDropshipPurchaseOrders({ limit: 2, sortOrder: 'DESC' });
+
+    await t.test('should return purchase orders with their products', () => {
+        assert.strictEqual(purchaseOrders.length, 2);
+        assert.ok(purchaseOrders.every(purchaseOrder => purchaseOrder.poNumber && purchaseOrder.products.length));
+    });
+
+    await t.test('should return only the purchase orders in poNumbers', async () => {
+        const result = await wayfair.getDropshipPurchaseOrders({ poNumbers: [purchaseOrders[1].poNumber] });
+
+        assert.deepStrictEqual(result.map(purchaseOrder => purchaseOrder.poNumber), [purchaseOrders[1].poNumber]);
+    });
+
+    await t.test('should take a Date for fromDate', async () => {
+        assert.deepStrictEqual(await wayfair.getDropshipPurchaseOrders({ fromDate: new Date(Date.now() + 86400000) }), []);
+    });
+
+    await t.test('should page through every purchase order from fromDate with autoPagination', async () => {
+        // A full first page from the older one, so a second page starts at the newer one
+        const result = await wayfair.getDropshipPurchaseOrders({ fromDate: purchaseOrders[1].poDate, limit: 2 }, { autoPagination: true });
+
+        assert.ok(purchaseOrders.every(purchaseOrder => result.some(r => r.poNumber === purchaseOrder.poNumber)));
+    });
+});
+
 test('purchaseOrders', async (t) => {
     const wayfair = new Wayfair({ client_id: process.env.WAYFAIR_CLIENT_ID, client_secret: process.env.WAYFAIR_CLIENT_SECRET, sandbox: true, supplierId });
 
@@ -251,14 +281,44 @@ test('mocked responses', async (t) => {
     };
 
     await t.test('should use production URLs unless sandbox is set', async (t) => {
-        const requests = mockFetch(t, () => Response.json({ data: { dropshipOrders: { edges: [], pageInfo: { hasNextPage: false } }, inventory: { save: { handle: 'mock' } } } }));
+        const requests = mockFetch(t, () => Response.json({ data: { dropshipOrders: { edges: [], pageInfo: { hasNextPage: false } }, getDropshipPurchaseOrders: [], inventory: { save: { handle: 'mock' } } } }));
         const wayfair = new Wayfair({ client_id: 'production', client_secret: 'mock' });
 
         await wayfair.inventory.save([]);
         await wayfair.dropshipOrders();
+        await wayfair.getDropshipPurchaseOrders();
 
-        assert.deepStrictEqual(requests.map(request => request.url), ['https://sso.auth.wayfair.com/oauth/token', 'https://api.wayfair.com/v1/graphql', 'https://api.wayfair.io/2026-09/dropship-orders/graphql']);
+        assert.deepStrictEqual(requests.map(request => request.url), ['https://sso.auth.wayfair.com/oauth/token', 'https://api.wayfair.com/v1/graphql', 'https://api.wayfair.io/2026-09/dropship-orders/graphql', 'https://api.wayfair.com/v1/graphql']);
         assert.strictEqual(requests[0].body.audience, 'https://api.wayfair.com/');
+        // Production has products.isCancelled; the sandbox doesn't
+        assert.match(requests[3].body.query, /isCancelled/);
+    });
+
+    await t.test('getDropshipPurchaseOrders autoPagination should start each page at the last one\'s newest poDate, 3 seconds apart, until a page is short', async (t) => {
+        const purchaseOrder = poNumber => ({ poDate: `2026-11-0${poNumber.slice(-1)} 00:00:00.000000 -05:00`, poNumber });
+        const pages = [[purchaseOrder('CS1'), purchaseOrder('CS2')], [purchaseOrder('CS2'), purchaseOrder('CS3')], [purchaseOrder('CS3')]];
+        const requests = mockFetch(t, () => Response.json({ data: { getDropshipPurchaseOrders: pages.shift() } }));
+        const wait = t.mock.method(timers, 'setTimeout', async () => {});
+        const wayfair = new Wayfair({ client_id: 'autoPaginationV1', client_secret: 'mock' });
+
+        const result = await wayfair.getDropshipPurchaseOrders({ fromDate: '2026-11-01', limit: 2, sortOrder: 'DESC' }, { autoPagination: true });
+
+        assert.deepStrictEqual(result.map(r => r.poNumber), ['CS1', 'CS2', 'CS3']);
+        assert.deepStrictEqual(requests.slice(1).map(request => [request.body.variables.fromDate, request.body.variables.limit, request.body.variables.sortOrder]), [['2026-11-01', 2, 'ASC'], [purchaseOrder('CS2').poDate, 2, 'ASC'], [purchaseOrder('CS3').poDate, 2, 'ASC']]);
+        assert.deepStrictEqual(wait.mock.calls.map(call => call.arguments[0]), [3000, 3000]);
+    });
+
+    await t.test('getDropshipPurchaseOrders autoPagination should ask for 100 a page when limit is missing, and stop at a full page with nothing new', async (t) => {
+        const page = Array.from({ length: 100 }, (value, index) => ({ poDate: '2026-11-01 00:00:00.000000 -05:00', poNumber: `CS${index}` }));
+        const requests = mockFetch(t, () => Response.json({ data: { getDropshipPurchaseOrders: page } }));
+        t.mock.method(timers, 'setTimeout', async () => {});
+        const wayfair = new Wayfair({ client_id: 'autoPaginationV1Full', client_secret: 'mock' });
+
+        const result = await wayfair.getDropshipPurchaseOrders({}, { autoPagination: true });
+
+        assert.strictEqual(result.length, 100);
+        assert.strictEqual(requests.length, 3);
+        assert.strictEqual(requests[1].body.variables.limit, 100);
     });
 
     await t.test('autoPagination should ask for 250 orders a page when first is missing', async (t) => {
