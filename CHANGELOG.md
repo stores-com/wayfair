@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0
+
+- Add `getDropshipPurchaseOrders(variables, options)` back, on the v1 API, with `autoPagination` (100 a call unless `limit` says otherwise). Wayfair doesn't give the 2026-09 `dropshipOrders` to suppliers outside its beta.
+
 ## 0.2.0
 
 - Breaking: replace the `url` option with `sandbox` (`true` for Wayfair's sandbox).

@@ -369,6 +369,178 @@ function Wayfair(args) {
         return json;
     };
 
+    /**
+     * Get dropship purchase orders from Wayfair's v1 API, oldest first unless sortOrder says otherwise. Wayfair doesn't give dropshipOrders to suppliers outside its beta. Leave out hasResponse to get open and accepted purchase orders alike.
+     *
+     * Wayfair returns 10 per call unless limit says otherwise and allows one call every 3 seconds. It has no paging cursor, so with autoPagination, this pages through every purchase order from fromDate on, oldest first, 3 seconds apart, each page starting at the last page's newest poDate; if more than limit purchase orders share one poDate, the ones after that many are missed.
+     *
+     * Dates come back in Wayfair's format, e.g. 2026-11-04 19:42:03.000000 -05:00, which new Date() parses. products.quantity is a string, and shipTo.country is two letters, e.g. US. products.isCancelled is left out in the sandbox, which doesn't have it.
+     *
+     * @param {Object} [variables] - Query arguments.
+     * @param {Date|string} [variables.fromDate] - Earliest purchase order date. A string must be ISO 8601, e.g. 2026-05-01 00:00:00.000000 +00:00 (Wayfair's format) or 2026-05-01T00:00:00.000Z.
+     * @param {boolean} [variables.hasResponse] - false for open purchase orders, true for accepted ones.
+     * @param {number} [variables.limit] - Purchase orders per call: Wayfair's default is 10, and 100 with autoPagination.
+     * @param {Array.<string>} [variables.poNumbers] - Only these purchase orders.
+     * @param {string} [variables.sortOrder] - 'ASC' or 'DESC' by poDate. Always 'ASC' with autoPagination.
+     * @param {Object} [options] - Per-call options.
+     * @param {boolean} [options.autoPagination=false] - Page through every purchase order from fromDate on.
+     * @param {number} [options.timeout] - Override the client timeout in milliseconds.
+     * @returns {Promise<Array.<Object>>} The purchase orders.
+     * @throws {HttpError} If Wayfair responds with an error.
+     * @see https://developer.wayfair.io/posts/docs/orders-api/reference/GraphQL/v1.0.0
+     * @example
+     * const purchaseOrders = await wayfair.getDropshipPurchaseOrders({ fromDate: new Date('2026-10-01') }, { autoPagination: true });
+     */
+    this.getDropshipPurchaseOrders = async (variables = {}, options = {}) => {
+        const query = `query getDropshipPurchaseOrders($fromDate: IsoDateTime, $hasResponse: Boolean, $limit: Int32, $poNumbers: [String], $sortOrder: SortOrder) {
+            getDropshipPurchaseOrders(fromDate: $fromDate, hasResponse: $hasResponse, limit: $limit, poNumbers: $poNumbers, sortOrder: $sortOrder) {
+                billingInfo {
+                    vatNumber
+                }
+                billTo {
+                    address1
+                    address2
+                    address3
+                    city
+                    country
+                    name
+                    phoneNumber
+                    postalCode
+                    state
+                }
+                customerAddress1
+                customerAddress2
+                customerCity
+                customerCountry
+                customerEmail
+                customerName
+                customerPostalCode
+                customerState
+                deliveryMethodCode
+                estimatedShipDate
+                id
+                orderId
+                orderType
+                packingSlipUrl
+                poDate
+                poNumber
+                products {
+                    customComment
+                    estShipDate
+                    event {
+                        endDate
+                        id
+                        name
+                        startDate
+                        type
+                    }
+                    fillDate
+                    ${_options.sandbox ? '' : 'isCancelled'}
+                    isTscaCompliant
+                    name
+                    partNumber
+                    pieceCount
+                    price
+                    quantity
+                    sku
+                    totalCost
+                    totalWeight
+                    twoDayGuaranteeDeliveryDeadline
+                    weight
+                }
+                salesChannelName
+                scheduledDeliveryDate
+                shippingInfo {
+                    carrierCode
+                    crossDockAgent {
+                        id
+                        name
+                    }
+                    deliveryAgent {
+                        id
+                        name
+                    }
+                    poolPointAgent {
+                        id
+                        name
+                    }
+                    shipSpeed
+                }
+                shipTo {
+                    address1
+                    address2
+                    address3
+                    city
+                    country
+                    name
+                    phoneNumber
+                    postalCode
+                    state
+                }
+                storePrefix
+                supplierAddress1
+                supplierAddress2
+                supplierAddress3
+                supplierCity
+                supplierId
+                supplierName
+                supplierPostalCode
+                supplierState
+                warehouse {
+                    address {
+                        address1
+                        address2
+                        address3
+                        city
+                        country
+                        name
+                        phoneNumber
+                        postalCode
+                        state
+                    }
+                    id
+                    name
+                    supplier {
+                        currency
+                        id
+                        name
+                        shortName
+                        status
+                        websiteURL
+                    }
+                }
+            }
+        }`;
+
+        const pageVariables = { ...variables };
+
+        if (options.autoPagination) {
+            pageVariables.limit = variables.limit || 100;
+            pageVariables.sortOrder = 'ASC';
+        }
+
+        const purchaseOrders = new Map();
+
+        // Wayfair has no paging cursor, so the next page starts at this page's newest poDate (which returns that purchase order again)
+        const fetchPurchaseOrders = async (fromDate) => {
+            const page = (await request(`${baseUrl}/v1/graphql`, query, { ...pageVariables, fromDate }, options)).getDropshipPurchaseOrders;
+            const count = purchaseOrders.size;
+
+            page.forEach(purchaseOrder => purchaseOrders.set(purchaseOrder.poNumber, purchaseOrder));
+
+            // A full page that brought new purchase orders may have more after it
+            if (options.autoPagination && page.length === pageVariables.limit && purchaseOrders.size > count) {
+                // Wayfair allows one call every 3 seconds
+                await timers.setTimeout(3000);
+                await fetchPurchaseOrders(page[page.length - 1].poDate);
+            }
+        };
+
+        await fetchPurchaseOrders(pageVariables.fromDate);
+
+        return Array.from(purchaseOrders.values());
+    };
+
     this.inventory = {
         /**
          * Send a dropship inventory feed. A TRUE_UP feed is a complete listing and is required at least once every 24 hours; a DIFFERENTIAL feed (Wayfair's default) has only the products whose quantities changed, ideally every 30 minutes. The sandbox only takes TRUE_UP feeds, truncated at 500 rows.
